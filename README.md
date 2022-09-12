@@ -1,2 +1,3 @@
-# promoproject
-Hi guys! It has been a while since I don't produce any code in Java. Tonight I decided to play with some springboot Java code.
+# PROMO-Project #
+
+ ## I am creating this project to update my Java Development skills. I started this project with spring-boot, spring-data, mongo-db. I hope this can be helpful. ##
