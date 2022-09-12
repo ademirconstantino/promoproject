@@ -1,15 +1,22 @@
 package it.constantinoit.promoproject.helper;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.stereotype.Component;
 
 @Component
 @PropertySource("classpath:mail.properties")
+@Getter
+@Setter
 public class MailHelper {
 
     @Value( "${mail.hostname}" )
     private String hostname;
+
+    @Value( "${mail.port}" )
+    private String port;
 
     @Value( "${mail.sender}" )
     private String mailsender;
@@ -20,35 +27,10 @@ public class MailHelper {
     @Value( "${mail.message}" )
     private String message;
 
-    public String getHostname() {
-        return hostname;
-    }
+    @Value( "${mail.username}" )
+    private String usermame;
 
-    public void setHostname(String hostname) {
-        this.hostname = hostname;
-    }
+    @Value( "${mail.password}" )
+    private String password;
 
-    public String getMailsender() {
-        return mailsender;
-    }
-
-    public void setMailsender(String mailsender) {
-        this.mailsender = mailsender;
-    }
-
-    public String getMessageSubject() {
-        return messageSubject;
-    }
-
-    public void setMessageSubject(String messageSubject) {
-        this.messageSubject = messageSubject;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
-    }
 }

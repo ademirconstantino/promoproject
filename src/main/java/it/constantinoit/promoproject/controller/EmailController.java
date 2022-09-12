@@ -1,4 +1,4 @@
-package it.constantinoit.promoproject.mail;
+package it.constantinoit.promoproject.controller;
 
 import it.constantinoit.promoproject.exeption.MailFailureException;
 import it.constantinoit.promoproject.model.Prospect;
@@ -20,6 +20,7 @@ public class EmailController {
     @PostMapping(value = "/postmail", consumes = "application/json", produces = "application/json")
     public ResponsePostmail postmail(@RequestBody Prospect target) {
         try {
+
             emailService.sendEmail(target);
             return new ResponsePostmail.ResponsePostmailBuilder().
                     withEmail(target.getEmail()).

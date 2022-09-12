@@ -3,13 +3,11 @@ package it.constantinoit.promoproject.service;
 import it.constantinoit.promoproject.exeption.MailFailureException;
 import it.constantinoit.promoproject.helper.MailHelper;
 import it.constantinoit.promoproject.model.Prospect;
+import it.constantinoit.promoproject.repository.ProspectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.mail.Message;
-import javax.mail.MessagingException;
-import javax.mail.Session;
-import javax.mail.Transport;
+import javax.mail.*;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.Properties;
@@ -20,11 +18,27 @@ public class EmailService {
     @Autowired
     private MailHelper mailHelper;
 
+    @Autowired
+    private ProspectRepository prospectRepository;
+
     public Boolean sendEmail(Prospect prospect) throws MailFailureException {
 
         Properties properties = System.getProperties();
         properties.setProperty("mail.smtp.host", mailHelper.getHostname());
-        Session session = Session.getDefaultInstance(properties);
+        properties.setProperty("mail.smtp.port", mailHelper.getPort());
+
+        properties.setProperty("mail.smtp.starttls.enable", "true");
+        properties.setProperty("mail.smtp.auth", "true");
+        properties.setProperty("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+        Session session = Session.getDefaultInstance(properties,
+                new javax.mail.Authenticator() {
+
+                    protected PasswordAuthentication
+                    getPasswordAuthentication() {
+                        return new PasswordAuthentication(mailHelper.getUsermame(),
+                                mailHelper.getPassword());
+                    }
+        });
 
         try {
             MimeMessage message = new MimeMessage(session);
@@ -32,7 +46,8 @@ public class EmailService {
             message.addRecipient(Message.RecipientType.TO, new InternetAddress(prospect.getEmail()));
             message.setSubject(mailHelper.getMessageSubject());
             message.setText(mailHelper.getMessage());
-            Transport.send(message);
+           // Transport.send(message);
+            prospectRepository.save(prospect);
             return Boolean.TRUE;
 
         } catch (MessagingException mex) {
