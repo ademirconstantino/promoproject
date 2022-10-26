@@ -4,16 +4,23 @@ import it.constantinoit.promoproject.exeption.MailFailureException;
 import it.constantinoit.promoproject.helper.MailHelper;
 import it.constantinoit.promoproject.model.Prospect;
 import it.constantinoit.promoproject.repository.ProspectRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.mail.*;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.PasswordAuthentication;
+import javax.mail.Session;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.Properties;
 
 @Service
 public class EmailService {
+
+    private static Logger logger = LoggerFactory.getLogger(EmailService.class);
 
     @Autowired
     private MailHelper mailHelper;
@@ -47,10 +54,12 @@ public class EmailService {
             message.setSubject(mailHelper.getMessageSubject());
             message.setText(mailHelper.getMessage());
            // Transport.send(message);
+            logger.info("send email and saved prospect: " + prospect.getEmail() + " with mongodb");
             prospectRepository.save(prospect);
             return Boolean.TRUE;
 
         } catch (MessagingException mex) {
+            logger.error(mex.toString());
             throw new MailFailureException("Cannot send email");
         }
 
