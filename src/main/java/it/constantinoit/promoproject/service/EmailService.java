@@ -9,10 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.mail.Message;
-import javax.mail.MessagingException;
-import javax.mail.PasswordAuthentication;
-import javax.mail.Session;
+import javax.mail.*;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.Properties;
@@ -53,15 +50,14 @@ public class EmailService {
             message.addRecipient(Message.RecipientType.TO, new InternetAddress(prospect.getEmail()));
             message.setSubject(mailHelper.getMessageSubject());
             message.setText(mailHelper.getMessage());
-           // Transport.send(message);
-            logger.info("send email and saved prospect: " + prospect.getEmail() + " with mongodb");
-            prospectRepository.save(prospect);
-            return Boolean.TRUE;
+            Transport.send(message);
 
         } catch (MessagingException mex) {
             logger.error(mex.toString());
-            throw new MailFailureException("Cannot send email");
         }
 
+        logger.info("send email and saved prospect: " + prospect.getEmail() + " with mongodb");
+        prospectRepository.save(prospect);
+        return Boolean.TRUE;
     }
 }
