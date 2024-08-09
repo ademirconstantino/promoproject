@@ -17,7 +17,7 @@ import java.util.Properties;
 @Service
 public class EmailService {
 
-    private static Logger logger = LoggerFactory.getLogger(EmailService.class);
+    private static Logger LOG = LoggerFactory.getLogger(EmailService.class);
 
     @Autowired
     private MailHelper mailHelper;
@@ -53,10 +53,10 @@ public class EmailService {
             Transport.send(message);
 
         } catch (MessagingException mex) {
-            logger.error(mex.toString());
+            LOG.error(mex.toString());
         }
 
-        logger.info("send email and saved prospect: " + prospect.getEmail() + " with mongodb");
+        LOG.info("send email and saved prospect: " + prospect.getEmail() + " with mongodb");
         prospectRepository.save(prospect);
         return Boolean.TRUE;
     }

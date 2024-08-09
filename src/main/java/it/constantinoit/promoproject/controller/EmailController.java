@@ -16,7 +16,7 @@ import java.util.Date;
 @RestController
 public class EmailController {
 
-    private static Logger logger = LoggerFactory.getLogger(EmailController.class);
+    private static Logger LOG = LoggerFactory.getLogger(EmailController.class);
 
     @Autowired
     private EmailService emailService;
@@ -26,7 +26,7 @@ public class EmailController {
         try {
 
             emailService.sendEmail(target);
-            logger.info(" sent email to " + target.getEmail() + " regarding promos");
+            LOG.info(" sent email to " + target.getEmail() + " regarding promos");
             return new ResponsePostmail.ResponsePostmailBuilder().
                     withEmail(target.getEmail()).
                     withDeliveryDate(new Date()).

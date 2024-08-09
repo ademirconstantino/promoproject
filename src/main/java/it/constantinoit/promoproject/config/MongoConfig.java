@@ -5,6 +5,9 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import it.constantinoit.promoproject.helper.ApplicationHelper;
+import it.constantinoit.promoproject.kafka.consumer.MessageConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -20,6 +23,8 @@ import java.util.List;
 @EnableMongoRepositories(basePackages = "it.constantinoit.promoproject.repository")
 public class MongoConfig extends AbstractMongoClientConfiguration {
 
+    private static final Logger LOG = LoggerFactory.getLogger(MongoConfig.class);
+
     @Autowired
     private ApplicationHelper applicationHelper;
 
@@ -33,12 +38,16 @@ public class MongoConfig extends AbstractMongoClientConfiguration {
     @Override
     public MongoClient mongoClient() {
 
+        LOG.info("Setting up mongoDB");
+
         String mongoServer = applicationHelper.getMongoServerHost();
         String mongoPort = applicationHelper.getMongoServerPort();
         String dbnName = applicationHelper.getMongoDbName();
 
         final ConnectionString connectionString = new ConnectionString(String.format("mongodb://%s:%s/%s"
                 ,mongoServer, mongoPort, dbnName));
+
+        LOG.info("Setting up mongoDB: connectionString {}", connectionString);
 
         final MongoClientSettings mongoClientSettings = MongoClientSettings.builder()
                 .applyConnectionString(connectionString)
