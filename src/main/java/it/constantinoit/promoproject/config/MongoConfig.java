@@ -4,6 +4,8 @@ import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import it.constantinoit.promoproject.helper.ApplicationHelper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.mongodb.config.AbstractMongoClientConfiguration;
@@ -18,6 +20,9 @@ import java.util.List;
 @EnableMongoRepositories(basePackages = "it.constantinoit.promoproject.repository")
 public class MongoConfig extends AbstractMongoClientConfiguration {
 
+    @Autowired
+    private ApplicationHelper applicationHelper;
+
     private final List<Converter<?, ?>> converters = new ArrayList<Converter<?, ?>>();
 
     @Override
@@ -27,7 +32,14 @@ public class MongoConfig extends AbstractMongoClientConfiguration {
 
     @Override
     public MongoClient mongoClient() {
-        final ConnectionString connectionString = new ConnectionString("mongodb://localhost:27017/promoproject");
+
+        String mongoServer = applicationHelper.getMongoServerHost();
+        String mongoPort = applicationHelper.getMongoServerPort();
+        String dbnName = applicationHelper.getMongoDbName();
+
+        final ConnectionString connectionString = new ConnectionString(String.format("mongodb://%s:%s/%s"
+                ,mongoServer, mongoPort, dbnName));
+
         final MongoClientSettings mongoClientSettings = MongoClientSettings.builder()
                 .applyConnectionString(connectionString)
                 .build();
