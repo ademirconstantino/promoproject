@@ -9,11 +9,14 @@
 ### Building
 #### ./mvnw clean package -DskipTests
 #### docker build -t promoproject .
+#### docker tag promoproject tuo-username/promoproject:latest
+#### docker push tuo-username/promoproject:latest
 #### kubectl apply -f k8s-deployment.yaml
 
 #### kubectl get pods
 #### kubectl logs deployment/promoproject-deployment
 #### kubectl apply -f k8s-deployment.yaml
+
 #### kubectl delete -f k8s-deployment.yaml
 
 #### kubectl scale deployment promoproject-deployment --replicas=0
