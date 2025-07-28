@@ -3,17 +3,17 @@ spring:
     template:
         default-topic: promoproject
     consumer:
-      bootstrap-servers: host.minikube.internal:9092
+      bootstrap-servers: host.docker.internal:9092
       group-id: test-consumer-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
-      bootstrap-servers: host.minikube.internal:9092
+      bootstrap-servers: host.docker.internal:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
   data:
     mongodb:
-      host: host.minikube.internal
+      host: host.docker.internal
       port: 27017
       database: promoproject

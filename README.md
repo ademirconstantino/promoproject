@@ -1,12 +1,10 @@
 ## PROMOProject ##
 
-### I am creating this project to update my Java Development skills.
-#### I started this project with spring-boot, spring-data, mongo-db. I hope this can be helpful. #
+#### OpenAPI/Swagger: http://localhost:7070/swagger-ui/index.html
+#### KafkaUI: http://localhost:8084/ui/
 
-#### Added support to Kafka in 09/08/2024
-#### OpenAPI/Swagger: http://localhost:8080/swagger-ui/index.html
+## Building with minikube
 
-### Building
 #### ./mvnw clean package -DskipTests
 #### docker build -t promoproject .
 #### docker tag promoproject tuo-username/promoproject:latest
@@ -22,3 +20,15 @@
 #### kubectl scale deployment promoproject-deployment --replicas=0
 #### kubectl delete pod promoproject-deployment-645756fbb9-wbs72
 #### kubectl delete service promoproject-service
+
+## Local with Docker:
+
+#### mvn clean install
+#### docker build -t promoproject .
+#### docker-compose up --build
+#### docker-compose down -v
+
+### Services
+#### - MongoDB
+#### - Kafka
+#### - Kafka-UI
