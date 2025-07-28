@@ -17,3 +17,5 @@ spring:
       host: host.docker.internal
       port: 27017
       database: promoproject
+      username: admin
+      password: admin123

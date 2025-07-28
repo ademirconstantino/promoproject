@@ -30,6 +30,12 @@ public class MongoConfig extends AbstractMongoClientConfiguration {
     @Value("${spring.data.mongodb.database}")
     private String mongoDatabase;
 
+    @Value("${spring.data.mongodb.username}")
+    private String mongoUsername;
+
+    @Value("${spring.data.mongodb.password}")
+    private String mongoPassword;
+
     private static final Logger LOG = LoggerFactory.getLogger(MongoConfig.class);
 
     private final List<Converter<?, ?>> converters = new ArrayList<Converter<?, ?>>();
@@ -44,13 +50,27 @@ public class MongoConfig extends AbstractMongoClientConfiguration {
 
         LOG.info("Setting up mongoDB");
 
-        final ConnectionString connectionString = new ConnectionString(String.format("mongodb://%s:%s/%s", mongoHost, mongoPort, mongoDatabase));
+        final String username = mongoUsername;
+        final String password = mongoPassword;
+        final String host = mongoHost;
+        final String port = mongoPort;
+        final String database = mongoDatabase;
 
+        final String uri = String.format(
+                "mongodb://%s:%s@%s:%s/%s?authSource=admin",
+                username, password, host, port, database
+        );
+
+        final ConnectionString connectionString = new ConnectionString(uri);
         LOG.info("Setting up mongoDB: connectionString {}", connectionString);
 
-        final MongoClientSettings mongoClientSettings = MongoClientSettings.builder().applyConnectionString(connectionString).build();
+        final MongoClientSettings mongoClientSettings = MongoClientSettings.builder()
+                .applyConnectionString(connectionString)
+                .build();
+
         return MongoClients.create(mongoClientSettings);
     }
+
 
     @Override
     public Collection<String> getMappingBasePackages() {
