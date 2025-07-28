@@ -1,6 +1,6 @@
 ## PROMOProject ##
 
-#### OpenAPI/Swagger: http://localhost:7070/swagger-ui/index.html
+#### OpenAPI/Swagger: http://localhost:8080/swagger-ui/index.html
 #### KafkaUI: http://localhost:8084/ui/
 
 ## Building with minikube
