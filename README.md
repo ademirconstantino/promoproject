@@ -5,7 +5,7 @@
 
 ## Building with minikube
 
-#### ./mvnw clean package -DskipTests
+#### ./mvn clean package -DskipTests
 #### docker build -t promoproject .
 #### docker tag promoproject tuo-username/promoproject:latest
 #### docker push tuo-username/promoproject:latest
