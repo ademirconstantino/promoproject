@@ -22,6 +22,10 @@ Once the application is running:
   `http://localhost:8080/swagger-ui/index.html`  
 - 🛠 **Kafka UI**  
   `http://localhost:8084/ui/`
+- 🛠 **Grafana**
+  http://localhost:3000/dashboards
+- 📄 **Metrics (Spring-Boot Actuator)**  
+  http://localhost:8080/actuator/prometheus
 
 > Make sure dependent services (MongoDB and Kafka) are running before accessing the UIs.
 
@@ -73,5 +77,5 @@ cd promoproject
 
   mvn clean install
   docker build -t promoproject .
-  docker-compose up --build
-  docker-compose down -v
+  docker compose up --build
+  docker compose down -v

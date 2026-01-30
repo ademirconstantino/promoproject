@@ -1,21 +1,32 @@
+server:
+  address: 0.0.0.0
+  port: 8080
 spring:
   kafka:
     template:
         default-topic: promoproject
     consumer:
-      bootstrap-servers: host.docker.internal:9092
+      bootstrap-servers: localhost:9092
       group-id: test-consumer-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
-      bootstrap-servers: host.docker.internal:9092
+      bootstrap-servers: localhost:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
   data:
     mongodb:
-      host: host.docker.internal
+      host: localhost
       port: 27017
       database: promoproject
       username: admin
       password: admin123
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
