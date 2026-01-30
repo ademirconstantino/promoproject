@@ -64,6 +64,7 @@ cd promoproject
   kubectl get pods
   kubectl logs deployment/promoproject-deployment
   kubectl apply -f k8s-deployment.yaml
+  
 
   ## Shutdown
 

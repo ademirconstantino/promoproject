@@ -1,19 +1,17 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-targets:
-  - localhost:8080
 
 scrape_configs:
-  - job_name: "promoproject"
+  - job_name: "app"
     metrics_path: "/actuator/prometheus"
     static_configs:
-      - targets: ["promoproject:8080"]
+      - targets: ["app:8080"]
 
-  - job_name: kafka
+  - job_name: "kafka"
     static_configs:
       - targets: ["kafka-exporter:9308"]
 
-  - job_name: mongo
+  - job_name: "mongo"
     static_configs:
       - targets: ["mongodb-exporter:9216"]
