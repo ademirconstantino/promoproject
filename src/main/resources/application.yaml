@@ -4,21 +4,30 @@ spring:
 
   # Kafka Configuration
   kafka:
-    bootstrap-servers: broker:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    template:
+      default-topic: "promoproject"
     consumer:
-      group-id: promo-group
+      bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+      default-topic: "promoproject"
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
+      default-topic: "promoproject"
+      bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
   # MongoDB Configuration
   data:
     mongodb:
-      # Format: mongodb://user:password@service-name:port/database?authSource=admin
-      uri: mongodb://admin:admin123@mongodb:27017/promoproject?authSource=admin
+      host: localhost # The Docker service name
+      port: 27017
+      database: promoproject
+      username: admin
+      password: admin123
+      authentication-database: admin
 
 # Actuator & Prometheus Metrics Configuration
 management:

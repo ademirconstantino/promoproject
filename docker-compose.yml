@@ -4,14 +4,17 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "9080:9080"
+      - "8080:8080"
     depends_on:
       - broker
       - mongodb
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=broker:9092
-      - MONGO_URI=mongodb://admin:admin123@mongodb:27017
-
+      - MONGO_URI=mongodb://admin:admin123@mongodb:27017/promoproject?authSource=admin
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=broker:9092
+      - SPRING_KAFKA_PRODUCER_BOOTSTRAP_SERVERS=broker:9092
+      - SPRING_KAFKA_TEMPLATE_DEFAULT_TOPIC=my-topic
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:admin123@mongodb:27017/promoproject?authSource=admin
   broker:
     image: apache/kafka:latest
     container_name: broker
@@ -34,18 +37,26 @@ services:
       - kafka-data:/var/lib/kafka/data
 
   kafka-ui:
-    image: provectuslabs/kafka-ui:v0.7.2
+    image: provectuslabs/kafka-ui:latest
     ports:
-      - "8081:8081"
+      - "8081:8080" # Note: UI inside latest image usually runs on 8080
+    depends_on:
+      - broker
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:9092
+      # This helps UI wait for the cluster to be ready
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    restart: on-failure
 
   kafka-exporter:
     image: danielqsj/kafka-exporter:latest
     command: ["--kafka.server=broker:9092"]
     ports:
       - "9308:9308"
+    depends_on:
+      - broker
+    restart: always # Crucial: forces it to retry until Kafka is up
 
   mongodb:
     image: mongo:latest
