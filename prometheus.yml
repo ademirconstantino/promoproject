@@ -3,15 +3,23 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: "app"
+  # 1. Prometheus monitoring itself
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # 2. Your Application (assuming Spring Boot Actuator)
+  - job_name: "spring-app"
     metrics_path: "/actuator/prometheus"
     static_configs:
-      - targets: ["app:8080"]
+      - targets: ["app:9081"]
 
-  - job_name: "kafka"
+  # 3. Kafka via the Exporter
+  - job_name: "kafka-broker"
     static_configs:
       - targets: ["kafka-exporter:9308"]
 
-  - job_name: "mongo"
+  # 4. MongoDB via the Exporter
+  - job_name: "mongodb"
     static_configs:
       - targets: ["mongodb-exporter:9216"]

@@ -1,36 +1,36 @@
-server:
-  address: 0.0.0.0
-  port: 8080
-
 spring:
+  application:
+    name: promo-project-app
+
+  # Kafka Configuration
   kafka:
-    template:
-      default-topic: promoproject
+    bootstrap-servers: broker:9092
     consumer:
-      bootstrap-servers: kafka:9092
-      group-id: test-consumer-group
+      group-id: promo-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
-      bootstrap-servers: kafka:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
+  # MongoDB Configuration
   data:
     mongodb:
-      host: mongodb
-      port: 27017
-      database: promoproject
-      username: admin
-      password: admin123
-      authentication-database: admin
+      # Format: mongodb://user:password@service-name:port/database?authSource=admin
+      uri: mongodb://admin:admin123@mongodb:27017/promoproject?authSource=admin
 
+# Actuator & Prometheus Metrics Configuration
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health, info, prometheus
   endpoint:
+    prometheus:
+      enabled: true
     health:
       show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
