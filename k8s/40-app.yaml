@@ -1,0 +1,68 @@
+# PROMOProject (Spring Boot)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promoproject
+  namespace: promoproject
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: promoproject
+  template:
+    metadata:
+      labels:
+        app: promoproject
+    spec:
+      containers:
+        - name: promoproject
+          # Change this to your own Docker Hub image if you build and push one.
+          image: ademirconstantino85/promoproject:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            # MongoConfig.java builds the connection string from these properties,
+            # so the host must be set explicitly (a MongoDB URI alone is ignored).
+            - { name: SPRING_DATA_MONGODB_HOST, value: "mongodb" }
+            - { name: SPRING_DATA_MONGODB_PORT, value: "27017" }
+            - { name: SPRING_DATA_MONGODB_DATABASE, value: "promoproject" }
+            - name: SPRING_DATA_MONGODB_USERNAME
+              valueFrom:
+                secretKeyRef: { name: mongodb-credentials, key: username }
+            - name: SPRING_DATA_MONGODB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: mongodb-credentials, key: password }
+            # application.yaml reads ${KAFKA_BOOTSTRAP_SERVERS} for producer, consumer and admin
+            - { name: KAFKA_BOOTSTRAP_SERVERS, value: "kafka:9092" }
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 5
+          resources:
+            requests:
+              memory: "384Mi"
+              cpu: "250m"
+            limits:
+              memory: "768Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: promoproject
+  namespace: promoproject
+spec:
+  selector:
+    app: promoproject
+  ports:
+    - port: 8080
+      targetPort: 8080

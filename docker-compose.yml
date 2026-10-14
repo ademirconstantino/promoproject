@@ -15,6 +15,8 @@ services:
       - SPRING_KAFKA_PRODUCER_BOOTSTRAP_SERVERS=broker:9092
       - SPRING_KAFKA_TEMPLATE_DEFAULT_TOPIC=my-topic
       - SPRING_DATA_MONGODB_URI=mongodb://admin:admin123@mongodb:27017/promoproject?authSource=admin
+      # MongoConfig.java builds its connection string from the host property, not from the URI
+      - SPRING_DATA_MONGODB_HOST=mongodb
   broker:
     image: apache/kafka:latest
     container_name: broker
