@@ -4,6 +4,16 @@ PROMOProject is a **Java 17 / Spring Boot 3** backend that exposes REST APIs doc
 
 This guide takes you from a fresh clone to every UI open in your browser, on **Linux** or **macOS**.
 
+> **Quick start** — with the [prerequisites](#2-prerequisites) installed and a [cluster running](#3-start-a-local-kubernetes-cluster), one script does steps 4–6 for you. It deploys MongoDB and Kafka first, waits for them, then starts the app with a single replica, then Kafka UI and monitoring, and prints what is running:
+>
+> ```bash
+> ./makeit.sh --forward          # build, push, deploy and open the UIs
+> ./makeit.sh --skip-build       # deploy the image already on Docker Hub
+> ./makeit.sh --no-monitoring    # lighter: no Prometheus/Grafana (saves ~1 GB RAM)
+> ./makeit.sh --help             # all options
+> ```
+> Use your own image with `IMAGE=YOUR_DOCKERHUB_USER/promoproject:latest ./makeit.sh`.
+
 ---
 
 ## Contents
