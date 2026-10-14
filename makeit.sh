@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Builds PROMOProject and deploys the whole stack (k8s/) to the current Kubernetes cluster.
 #
+# Deployment order: 1) MongoDB and Kafka  2) the app  3) Kafka UI and monitoring,
+# waiting for each step to be ready before starting the next one.
+#
 # Usage: ./makeit.sh [options]
 #   -l, --local          Load the image straight into the cluster (k3s, minikube or
 #                        Docker Desktop) instead of pushing it to Docker Hub
 #   -s, --skip-build     Do not build the JAR or the image, only deploy
 #   -t, --with-tests     Run the tests during the Maven build
+#   -m, --no-monitoring  Skip Prometheus, Grafana and the exporters (saves ~1 GB RAM)
 #   -c, --clean          Delete the namespace (including MongoDB data) before deploying
 #   -f, --forward        Open the port-forwards (k8s/port-forward.sh) at the end
 #   -h, --help           Show this help
@@ -21,6 +25,7 @@ cd "$(dirname "$0")"
 NS=promoproject
 APP=promoproject
 MANIFESTS=k8s
+TIMEOUT=600s
 DEFAULT_IMAGE=$(awk '/image:/ && /promoproject/ {print $2; exit}' "$MANIFESTS/40-app.yaml")
 DEFAULT_MONGO_IMAGE=$(awk '/image: mongo:/ {print $2; exit}' "$MANIFESTS/10-mongodb.yaml")
 IMAGE=${IMAGE:-$DEFAULT_IMAGE}
@@ -29,13 +34,14 @@ MONGO_IMAGE=${MONGO_IMAGE:-}
 LOCAL=false
 BUILD=true
 SKIP_TESTS=true
+MONITORING=true
 CLEAN=false
 FORWARD=false
 
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33mWARN: %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
 
 # MongoDB 5.0+ refuses to start on CPUs without AVX
 cpu_has_avx() {
@@ -48,12 +54,13 @@ cpu_has_avx() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -l|--local)      LOCAL=true ;;
-    -s|--skip-build) BUILD=false ;;
-    -t|--with-tests) SKIP_TESTS=false ;;
-    -c|--clean)      CLEAN=true ;;
-    -f|--forward)    FORWARD=true ;;
-    -h|--help)       usage ;;
+    -l|--local)         LOCAL=true ;;
+    -s|--skip-build)    BUILD=false ;;
+    -t|--with-tests)    SKIP_TESTS=false ;;
+    -m|--no-monitoring) MONITORING=false ;;
+    -c|--clean)         CLEAN=true ;;
+    -f|--forward)       FORWARD=true ;;
+    -h|--help)          usage ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
   shift
@@ -64,7 +71,7 @@ require() { command -v "$1" >/dev/null 2>&1 || die "'$1' not found in PATH"; }
 # --- Pre-flight checks ------------------------------------------------------
 require kubectl
 kubectl cluster-info >/dev/null 2>&1 \
-  || die "kubectl cannot reach a cluster (context: $(kubectl config current-context 2>/dev/null || echo none)). See README, step 3."
+  || die "kubectl cannot reach a cluster (context: $(kubectl config current-context 2>/dev/null || echo none)). See README, step 2.2 / 3.2."
 
 CONTEXT=$(kubectl config current-context)
 
@@ -82,7 +89,16 @@ log "Cluster context: $CONTEXT | image: $IMAGE | mongo: $MONGO_IMAGE"
 
 if $BUILD; then
   require docker
-  docker info >/dev/null 2>&1 || die "cannot talk to Docker (is it running? is your user in the 'docker' group?)"
+  # Use sudo for docker only when the user is not in the docker group
+  DOCKER=(docker)
+  if ! docker info >/dev/null 2>&1; then
+    if sudo docker info >/dev/null 2>&1; then
+      DOCKER=(sudo docker)
+      warn "running docker with sudo (add yourself to the 'docker' group to avoid it)"
+    else
+      die "cannot talk to Docker (is it running?)"
+    fi
+  fi
 
   if [[ -x ./mvnw ]]; then MVN=./mvnw; else require mvn; MVN=mvn; fi
   JAVA_MAJOR=$("$MVN" -v 2>/dev/null | awk -F'[ .]' '/^Java version/ {print $3; exit}')
@@ -95,7 +111,7 @@ if $BUILD; then
   "$MVN" "${MVN_ARGS[@]}"
 
   log "Building the image $IMAGE"
-  docker build -t "$IMAGE" .
+  "${DOCKER[@]}" build -t "$IMAGE" .
 
   # --- Ship the image to the cluster ----------------------------------------
   if $LOCAL; then
@@ -108,13 +124,13 @@ if $BUILD; then
     elif kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' | grep -q k3s; then
       log "Importing the image into k3s (needs sudo)"
       require k3s
-      docker save "$IMAGE" | sudo k3s ctr images import -
+      "${DOCKER[@]}" save "$IMAGE" | sudo k3s ctr images import -
     else
       die "--local supports k3s, minikube and Docker Desktop; push the image instead (run without --local)"
     fi
   else
     log "Pushing $IMAGE"
-    docker push "$IMAGE" || die "push failed: run 'docker login', or use --local to skip the registry"
+    "${DOCKER[@]}" push "$IMAGE" || die "push failed: run '${DOCKER[*]} login', or use --local to skip the registry"
   fi
 fi
 
@@ -134,29 +150,48 @@ SED_ARGS=(-e "s#image: $DEFAULT_IMAGE\$#image: $IMAGE#"
 # imagePullPolicy: Always would ignore the image we just loaded into the cluster
 $LOCAL && SED_ARGS+=(-e "s#imagePullPolicy: Always#imagePullPolicy: IfNotPresent#")
 
-log "Applying manifests from $MANIFESTS/"
-kubectl apply -f "$MANIFESTS/00-namespace.yaml"
-for f in "$MANIFESTS"/*.yaml; do cat "$f"; printf '\n---\n'; done \
-  | sed "${SED_ARGS[@]}" \
-  | kubectl apply -f -
+apply() {
+  for f in "$@"; do cat "$MANIFESTS/$f"; printf '\n---\n'; done \
+    | sed "${SED_ARGS[@]}" \
+    | kubectl apply -f -
+}
 
+# Waits for a deployment; on failure shows its pods and logs, then stops
+wait_ready() {
+  local dep
+  for dep in "$@"; do
+    if ! kubectl -n "$NS" rollout status "deployment/$dep" --timeout="$TIMEOUT"; then
+      kubectl -n "$NS" get pods -l "app=$dep"
+      kubectl -n "$NS" logs "deploy/$dep" --tail=30 2>/dev/null || true
+      die "$dep did not become ready in $TIMEOUT (see above)"
+    fi
+  done
+}
+
+log "1/3  MongoDB and Kafka"
+apply 00-namespace.yaml 10-mongodb.yaml 20-kafka.yaml
+wait_ready mongodb kafka
+
+log "2/3  $APP"
+apply 40-app.yaml
 if $BUILD; then
-  log "Restarting $APP to pick up the new image"
-  kubectl -n "$NS" rollout restart "deployment/$APP"
+  kubectl -n "$NS" rollout restart "deployment/$APP"   # pick up the new image
 fi
+wait_ready "$APP"
 
-log "Waiting for the deployments (on slow machines this can take 10 minutes)"
-FAILED=false
-for d in $(kubectl -n "$NS" get deployments -o name); do
-  kubectl -n "$NS" rollout status "$d" --timeout=600s || FAILED=true
-done
+if $MONITORING; then
+  log "3/3  Kafka UI and monitoring"
+  apply 30-kafka-ui.yaml 50-monitoring.yaml
+  wait_ready kafka-ui prometheus grafana mongodb-exporter kafka-exporter
+else
+  log "3/3  Kafka UI (monitoring skipped)"
+  apply 30-kafka-ui.yaml
+  # Make sure monitoring from a previous run is not consuming memory
+  kubectl delete -f "$MANIFESTS/50-monitoring.yaml" --ignore-not-found >/dev/null 2>&1 || true
+  wait_ready kafka-ui
+fi
 
 kubectl -n "$NS" get pods
-
-if $FAILED; then
-  warn "some deployments are not ready. Check: kubectl -n $NS logs deploy/$APP --tail=100"
-  exit 1
-fi
 
 log "Stack is up"
 if $FORWARD; then

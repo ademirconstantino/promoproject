@@ -4,6 +4,17 @@ PROMOProject is a **Java 17 / Spring Boot 3** backend that exposes REST APIs doc
 
 This guide takes you from a fresh clone to every UI open in your browser. Pick the section for your operating system — **[Linux](#2-linux)** or **[macOS](#3-macos)** — then use the shared sections that follow.
 
+> **Quick start** — with the tools installed and a cluster running (Linux: [2.1–2.2](#2-linux), macOS: [3.1–3.2](#3-macos)), one script builds and deploys everything. It deploys MongoDB and Kafka first, waits for them, then starts the app, then Kafka UI and monitoring, and prints what is running:
+>
+> ```bash
+> ./makeit.sh --local --forward  # build, load into the local cluster, deploy and open the UIs
+> ./makeit.sh --skip-build       # deploy the image already on Docker Hub
+> ./makeit.sh --no-monitoring    # lighter: no Prometheus/Grafana (saves ~1 GB RAM)
+> ./makeit.sh --help             # all options
+> ./cleanup.sh                   # remove builds, images and data, keep only the sources
+> ```
+> All options are in [section 4](#4-the-makeitsh-script).
+
 ---
 
 ## Contents
@@ -137,7 +148,7 @@ Install k3s without Traefik (the stack does not use an ingress), which saves abo
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
 ```
 
-Then set up the kubeconfig as in [2.2](#22-start-a-local-kubernetes-cluster) and run `./makeit.sh --local --forward`. Expect the first deploy to take **5–10 minutes**; the app is given up to 5 minutes to start before Kubernetes considers it stuck.
+Then set up the kubeconfig as in [2.2](#22-start-a-local-kubernetes-cluster) and run `./makeit.sh --local --forward`. Expect the first deploy to take **5–10 minutes**; the app is given up to 5 minutes to start before Kubernetes considers it stuck. Add `--no-monitoring` to leave out Prometheus, Grafana and the exporters and save about 1 GB more.
 
 > Already ran `mongo:7` on that disk? MongoDB data files are not compatible with an older version. Start from an empty volume: `./makeit.sh --local --clean`.
 
@@ -227,8 +238,11 @@ What it does, in order:
 1. Checks that `kubectl` reaches a cluster, that Docker is running and that Maven uses JDK 17.
 2. Builds the JAR (`mvn clean package -DskipTests`).
 3. Builds the Docker image, then pushes it to Docker Hub — or, with `--local`, loads it into the cluster.
-4. Removes the legacy `k8s-deployment.yaml` resources if present, and applies everything in `k8s/` (switching to `mongo:4.4` on CPUs without AVX).
-5. Restarts the app so it picks up the new image, waits for every deployment to be ready and lists the pods.
+4. Removes the legacy `k8s-deployment.yaml` resources if present, then deploys `k8s/` in three steps, waiting for each to be ready before the next (switching to `mongo:4.4` on CPUs without AVX):
+   1. MongoDB and Kafka
+   2. the app (restarted so it picks up the new image)
+   3. Kafka UI and monitoring (Prometheus, Grafana, exporters)
+5. Lists the pods. If a step does not become ready, it shows that component's pods and last log lines and stops.
 
 ```bash
 ./makeit.sh [options]
@@ -239,6 +253,7 @@ What it does, in order:
 | `-l`, `--local` | Load the image into the cluster (k3s, minikube or Docker Desktop) instead of pushing it to Docker Hub |
 | `-s`, `--skip-build` | Do not build the JAR or the image; only deploy |
 | `-t`, `--with-tests` | Run the tests during the Maven build |
+| `-m`, `--no-monitoring` | Skip Prometheus, Grafana and the exporters, and remove them if a previous run deployed them (saves ~1 GB RAM) |
 | `-c`, `--clean` | Delete the `promoproject` namespace before deploying (**erases MongoDB data**) |
 | `-f`, `--forward` | Run `k8s/port-forward.sh` at the end |
 | `-h`, `--help` | Show the help |
