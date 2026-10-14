@@ -110,7 +110,7 @@ kubectl get nodes
 ```bash
 git clone https://github.com/ademirconstantino/promoproject.git
 cd promoproject
-chmod +x makeit.sh k8s/port-forward.sh     # first time only
+chmod +x makeit.sh cleanup.sh k8s/port-forward.sh     # first time only
 
 ./makeit.sh --local --forward
 ```
@@ -124,11 +124,30 @@ chmod +x makeit.sh k8s/port-forward.sh     # first time only
 
 > Prefer to publish the image to Docker Hub instead? See [Pushing to Docker Hub](#pushing-to-docker-hub).
 
+### 2.4 Old hardware (e.g. MacBook Core 2 Duo, 8 GB RAM)
+
+The stack is tuned to fit in about **3.5 GB** (the sum of the memory limits in `k8s/`), so it runs on an old dual-core machine with 8 GB of RAM. Two things matter on that kind of hardware:
+
+- **Run Linux, not macOS.** Core 2 Duo Macs stop at macOS 10.11–10.13, and current Docker Desktop does not run there. Install a 64-bit Linux (Ubuntu Server 24.04 or Debian 12 work well) and follow this Linux section.
+- **No AVX.** MongoDB 5.0+ needs a CPU with AVX, which Core 2 Duo lacks. `./makeit.sh --local` detects this and deploys `mongo:4.4` instead of `mongo:7`, with no extra steps. To choose yourself, set `MONGO_IMAGE` (for example `MONGO_IMAGE=mongo:4.4 ./makeit.sh --local`).
+
+Install k3s without Traefik (the stack does not use an ingress), which saves about 100 MB:
+
+```bash
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
+```
+
+Then set up the kubeconfig as in [2.2](#22-start-a-local-kubernetes-cluster) and run `./makeit.sh --local --forward`. Expect the first deploy to take **5–10 minutes**; the app is given up to 5 minutes to start before Kubernetes considers it stuck.
+
+> Already ran `mongo:7` on that disk? MongoDB data files are not compatible with an older version. Start from an empty volume: `./makeit.sh --local --clean`.
+
 ---
 
 ## 3. macOS
 
 Commands below use [Homebrew](https://brew.sh). Leave about **4 GB of RAM** free for the cluster (in Docker Desktop: **Settings → Resources**).
+
+> **Old Intel Mac (Core 2 Duo)?** Current Docker Desktop does not run on it. Install Linux instead and see [2.4](#24-old-hardware-eg-macbook-core-2-duo-8-gb-ram).
 
 ### 3.1 Install the tools
 
@@ -178,7 +197,7 @@ kubectl get nodes
 ```bash
 git clone https://github.com/ademirconstantino/promoproject.git
 cd promoproject
-chmod +x makeit.sh k8s/port-forward.sh     # first time only
+chmod +x makeit.sh cleanup.sh k8s/port-forward.sh     # first time only
 
 ./makeit.sh --local --forward
 ```
@@ -208,7 +227,7 @@ What it does, in order:
 1. Checks that `kubectl` reaches a cluster, that Docker is running and that Maven uses JDK 17.
 2. Builds the JAR (`mvn clean package -DskipTests`).
 3. Builds the Docker image, then pushes it to Docker Hub — or, with `--local`, loads it into the cluster.
-4. Removes the legacy `k8s-deployment.yaml` resources if present, and runs `kubectl apply -f k8s/`.
+4. Removes the legacy `k8s-deployment.yaml` resources if present, and applies everything in `k8s/` (switching to `mongo:4.4` on CPUs without AVX).
 5. Restarts the app so it picks up the new image, waits for every deployment to be ready and lists the pods.
 
 ```bash
@@ -227,6 +246,7 @@ What it does, in order:
 | Variable | What it does |
 |---|---|
 | `IMAGE` | Image to build and deploy. Default: the `image:` in `k8s/40-app.yaml` (`ademirconstantino85/promoproject:latest`) |
+| `MONGO_IMAGE` | MongoDB image. Default: `mongo:7`, or `mongo:4.4` with `--local` on a CPU without AVX (see [2.4](#24-old-hardware-eg-macbook-core-2-duo-8-gb-ram)) |
 
 Examples:
 
@@ -305,7 +325,7 @@ kubectl -n promoproject get pods                          # status of everything
 kubectl -n promoproject logs -f deploy/promoproject       # follow app logs
 kubectl -n promoproject describe pod <pod-name>           # why a pod is not starting
 kubectl -n promoproject exec -it deploy/promoproject -- sh   # shell inside the app container
-kubectl -n promoproject exec -it deploy/mongodb -- mongosh -u admin -p admin123   # MongoDB shell
+kubectl -n promoproject exec -it deploy/mongodb -- mongosh -u admin -p admin123   # MongoDB shell (use "mongo" instead of "mongosh" on mongo:4.4)
 ```
 
 > **Tip:** to avoid typing `-n promoproject` every time:
@@ -322,6 +342,33 @@ kubectl -n promoproject scale deployment/promoproject --replicas=1    # bring it
 
 # Remove the whole stack, including MongoDB data
 kubectl delete namespace promoproject
+```
+
+### Full cleanup with `cleanup.sh`
+
+[`cleanup.sh`](cleanup.sh) removes everything the build and the deploy created and leaves only the source files, so the next `./makeit.sh` starts from scratch. Use it to free memory and disk (for example when the node reports `DiskPressure`).
+
+```bash
+chmod +x cleanup.sh     # first time only
+./cleanup.sh            # lists what it will delete and asks for confirmation
+./cleanup.sh --yes      # no confirmation
+```
+
+What it removes:
+
+| Where | What |
+|---|---|
+| Memory | The port-forwards, every pod of the stack (namespace `promoproject`) and the Docker Compose containers |
+| Disk — data | The MongoDB volume in Kubernetes and the Compose volumes (**all data is lost**) |
+| Disk — images | The stack's images (app, MongoDB 7 and 4.4, Kafka, Kafka UI, exporters, Prometheus, Grafana) from Docker **and** from the cluster: k3s (asks for `sudo`), minikube or Docker Desktop |
+| Disk — build | The Docker build cache and the Maven `target/` folder |
+
+Images from other projects are not touched. The Docker build cache is shared by every project on the machine, but it is only a cache and is rebuilt when needed. Maven's download cache (`~/.m2`) is kept, so the next build does not download every dependency again. The cluster itself (k3s, minikube, Docker Desktop) keeps running.
+
+Build and deploy again with:
+
+```bash
+./makeit.sh --local
 ```
 
 Stopping the cluster itself:
@@ -345,7 +392,9 @@ Stopping the cluster itself:
 | `push failed` | Not logged in to Docker Hub, or no permission on that repository | `docker login`, set `IMAGE=YOUR_DOCKERHUB_USER/promoproject:latest`, or use `--local` |
 | Pod in `ImagePullBackOff` | Wrong image name, or the image was not pushed | Run `./makeit.sh --local` on a local cluster, or check `IMAGE` and push again |
 | `promoproject` in `CrashLoopBackOff` | Kafka or MongoDB not ready yet | Wait a minute; if it continues, read `kubectl -n promoproject logs deploy/promoproject --previous` |
-| `makeit.sh` ends with `some deployments are not ready` | A pod did not start within 5 minutes | `kubectl -n promoproject get pods`, then `describe` / `logs` the failing one |
+| `makeit.sh` ends with `some deployments are not ready` | A pod did not start within 10 minutes | `kubectl -n promoproject get pods`, then `describe` / `logs` the failing one |
+| `mongodb` in `CrashLoopBackOff`, log says the CPU lacks AVX | Old CPU (e.g. Core 2 Duo) with `mongo:7` | Deploy with `./makeit.sh --local` (auto-detects it) or `MONGO_IMAGE=mongo:4.4` |
+| Every pod `Pending` or `Evicted`; `kubectl describe node` shows `DiskPressure` | The disk is (almost) full | Free space: `./cleanup.sh` (see [section 7](#full-cleanup-with-cleanupsh)), then `docker system prune -a` if you need more. Pods start again once disk usage is back under ~85% |
 | `mongodb` stuck in `Pending` | Cluster has no default StorageClass | `kubectl get storageclass` — k3s, minikube and Docker Desktop include one |
 | `port-forward` error `address already in use` | Another program uses that port (often `docker compose`) | Stop it (`docker compose down`) or change the left-hand port in `k8s/port-forward.sh` |
 | Kafka UI shows a blank page at `localhost:8084` | The UI is served under `/ui` | Open http://localhost:8084/ui/ (with the trailing `/ui/`) |

@@ -12,6 +12,8 @@
 #
 # Environment:
 #   IMAGE                Image to build and deploy (default: the one in k8s/40-app.yaml)
+#   MONGO_IMAGE          MongoDB image (default: the one in k8s/10-mongodb.yaml, or
+#                        mongo:4.4 with --local on a CPU without AVX, e.g. Core 2 Duo)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -20,7 +22,9 @@ NS=promoproject
 APP=promoproject
 MANIFESTS=k8s
 DEFAULT_IMAGE=$(awk '/image:/ && /promoproject/ {print $2; exit}' "$MANIFESTS/40-app.yaml")
+DEFAULT_MONGO_IMAGE=$(awk '/image: mongo:/ {print $2; exit}' "$MANIFESTS/10-mongodb.yaml")
 IMAGE=${IMAGE:-$DEFAULT_IMAGE}
+MONGO_IMAGE=${MONGO_IMAGE:-}
 
 LOCAL=false
 BUILD=true
@@ -31,7 +35,16 @@ FORWARD=false
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33mWARN: %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+
+# MongoDB 5.0+ refuses to start on CPUs without AVX
+cpu_has_avx() {
+  case "$(uname -s)" in
+    Linux)  grep -qw avx /proc/cpuinfo ;;
+    Darwin) sysctl -n machdep.cpu.features 2>/dev/null | grep -q AVX ;;
+    *)      return 0 ;;
+  esac
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,7 +67,18 @@ kubectl cluster-info >/dev/null 2>&1 \
   || die "kubectl cannot reach a cluster (context: $(kubectl config current-context 2>/dev/null || echo none)). See README, step 3."
 
 CONTEXT=$(kubectl config current-context)
-log "Cluster context: $CONTEXT | image: $IMAGE"
+
+# Only look at this machine's CPU when the cluster runs on it
+if [[ -z "$MONGO_IMAGE" ]]; then
+  if $LOCAL && ! cpu_has_avx; then
+    MONGO_IMAGE=mongo:4.4
+    warn "this CPU has no AVX; using $MONGO_IMAGE instead of $DEFAULT_MONGO_IMAGE"
+  else
+    MONGO_IMAGE=$DEFAULT_MONGO_IMAGE
+  fi
+fi
+
+log "Cluster context: $CONTEXT | image: $IMAGE | mongo: $MONGO_IMAGE"
 
 if $BUILD; then
   require docker
@@ -103,26 +127,28 @@ if $CLEAN; then
   kubectl delete namespace "$NS" --ignore-not-found --wait=true
 fi
 
+# Substitutions are applied to the manifests on the fly, so a re-run does not
+# flip the deployments back and forth (and restart MongoDB) every time.
+SED_ARGS=(-e "s#image: $DEFAULT_IMAGE\$#image: $IMAGE#"
+          -e "s#image: $DEFAULT_MONGO_IMAGE\$#image: $MONGO_IMAGE#")
+# imagePullPolicy: Always would ignore the image we just loaded into the cluster
+$LOCAL && SED_ARGS+=(-e "s#imagePullPolicy: Always#imagePullPolicy: IfNotPresent#")
+
 log "Applying manifests from $MANIFESTS/"
 kubectl apply -f "$MANIFESTS/00-namespace.yaml"
-kubectl apply -f "$MANIFESTS/"
+for f in "$MANIFESTS"/*.yaml; do cat "$f"; printf '\n---\n'; done \
+  | sed "${SED_ARGS[@]}" \
+  | kubectl apply -f -
 
-if [[ "$IMAGE" != "$DEFAULT_IMAGE" ]]; then
-  kubectl -n "$NS" set image "deployment/$APP" "$APP=$IMAGE"
-fi
-if $LOCAL; then
-  # The manifest uses imagePullPolicy: Always, which would ignore the image we just loaded
-  kubectl -n "$NS" patch "deployment/$APP" --type=json \
-    -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]'
+if $BUILD; then
+  log "Restarting $APP to pick up the new image"
+  kubectl -n "$NS" rollout restart "deployment/$APP"
 fi
 
-log "Restarting $APP to pick up the new image"
-kubectl -n "$NS" rollout restart "deployment/$APP"
-
-log "Waiting for the deployments (first run can take a few minutes)"
+log "Waiting for the deployments (on slow machines this can take 10 minutes)"
 FAILED=false
 for d in $(kubectl -n "$NS" get deployments -o name); do
-  kubectl -n "$NS" rollout status "$d" --timeout=300s || FAILED=true
+  kubectl -n "$NS" rollout status "$d" --timeout=600s || FAILED=true
 done
 
 kubectl -n "$NS" get pods

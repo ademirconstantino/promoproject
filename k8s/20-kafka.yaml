@@ -38,11 +38,16 @@ spec:
             - { name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
             - { name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
             - { name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0" }
+            # The image defaults to a 1 GiB heap; a single dev broker needs much less
+            - { name: KAFKA_HEAP_OPTS, value: "-Xms256m -Xmx384m" }
           readinessProbe:
             tcpSocket:
               port: 9092
             initialDelaySeconds: 10
             periodSeconds: 10
+          resources:
+            requests: { memory: "512Mi", cpu: "200m" }
+            limits:   { memory: "768Mi" }
           volumeMounts:
             - name: data
               mountPath: /var/lib/kafka/data

@@ -25,6 +25,10 @@ spec:
             - { name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS, value: "kafka:9092" }
             - { name: SERVER_SERVLET_CONTEXT_PATH, value: "/ui" }
             - { name: DYNAMIC_CONFIG_ENABLED, value: "true" }
+            - { name: JAVA_OPTS, value: "-Xmx256m -XX:TieredStopAtLevel=1" }
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "512Mi" }
 ---
 apiVersion: v1
 kind: Service

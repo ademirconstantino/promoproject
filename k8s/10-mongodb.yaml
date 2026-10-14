@@ -39,7 +39,11 @@ spec:
     spec:
       containers:
         - name: mongodb
+          # MongoDB 5.0+ needs a CPU with AVX. On older CPUs (e.g. Core 2 Duo)
+          # makeit.sh --local swaps this for mongo:4.4 automatically.
           image: mongo:7
+          # Keep the WiredTiger cache small; by default it takes half of the RAM
+          args: ["--wiredTigerCacheSizeGB", "0.25"]
           ports:
             - containerPort: 27017
           env:
@@ -49,11 +53,15 @@ spec:
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef: { name: mongodb-credentials, key: password }
+          # A TCP check works on every MongoDB image (mongo:4.4 has no mongosh)
           readinessProbe:
-            exec:
-              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+            tcpSocket:
+              port: 27017
             initialDelaySeconds: 10
             periodSeconds: 10
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "512Mi" }
           volumeMounts:
             - name: data
               mountPath: /data/db

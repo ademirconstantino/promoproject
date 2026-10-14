@@ -61,7 +61,7 @@ services:
     restart: always # Crucial: forces it to retry until Kafka is up
 
   mongodb:
-    image: mongo:latest
+    image: ${MONGO_IMAGE:-mongo:latest}   # use MONGO_IMAGE=mongo:4.4 on CPUs without AVX
     ports:
       - "27017:27017"
     environment:
