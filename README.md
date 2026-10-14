@@ -2,22 +2,22 @@
 
 PROMOProject is a **Java 17 / Spring Boot 3** backend that exposes REST APIs documented with OpenAPI (Swagger), stores data in **MongoDB**, and publishes and consumes messages on **Apache Kafka**. It ships with a monitoring stack (Prometheus + Grafana) and runs on **Kubernetes** or **Docker Compose**.
 
-This guide takes you from a fresh clone to every UI open in your browser, on **Linux** or **macOS**.
+This guide takes you from a fresh clone to every UI open in your browser. Pick the section for your operating system — **[Linux](#2-linux)** or **[macOS](#3-macos)** — then use the shared sections that follow.
 
 ---
 
 ## Contents
 
 1. [What gets deployed](#1-what-gets-deployed)
-2. [Prerequisites](#2-prerequisites)
-3. [Start a local Kubernetes cluster](#3-start-a-local-kubernetes-cluster)
-4. [Build the application image](#4-build-the-application-image)
-5. [Deploy to Kubernetes](#5-deploy-to-kubernetes)
-6. [Open the UIs on your machine](#6-open-the-uis-on-your-machine)
-7. [Day-to-day commands](#7-day-to-day-commands)
-8. [Shut down and clean up](#8-shut-down-and-clean-up)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Alternative: Docker Compose (no Kubernetes)](#10-alternative-docker-compose-no-kubernetes)
+2. [Linux](#2-linux)
+3. [macOS](#3-macos)
+4. [The `makeit.sh` script](#4-the-makeitsh-script)
+5. [Open the UIs on your machine](#5-open-the-uis-on-your-machine)
+6. [Day-to-day commands](#6-day-to-day-commands)
+7. [Shut down and clean up](#7-shut-down-and-clean-up)
+8. [Troubleshooting](#8-troubleshooting)
+9. [Alternative: Docker Compose (no Kubernetes)](#9-alternative-docker-compose-no-kubernetes)
+10. [Configuration reference](#10-configuration-reference)
 
 ---
 
@@ -25,7 +25,7 @@ This guide takes you from a fresh clone to every UI open in your browser, on **L
 
 Everything runs inside a dedicated Kubernetes namespace called `promoproject`. The manifests live in the [`k8s/`](k8s/) folder:
 
-| File | Component | In-cluster address | On your machine (after step 6) |
+| File | Component | In-cluster address | On your machine (after port-forward) |
 |---|---|---|---|
 | `00-namespace.yaml` | Namespace `promoproject` | — | — |
 | `10-mongodb.yaml` | MongoDB 7 (+ credentials Secret and 1 GiB volume) | `mongodb:27017` | — |
@@ -34,31 +34,30 @@ Everything runs inside a dedicated Kubernetes namespace called `promoproject`. T
 | `40-app.yaml` | **PROMOProject** | `promoproject:8080` | http://localhost:8080 |
 | `50-monitoring.yaml` | Kafka exporter, MongoDB exporter, Prometheus, Grafana | `prometheus:9090`, `grafana:3000` | http://localhost:9090, http://localhost:3000 |
 
-The services are internal to the cluster (`ClusterIP`). You reach them from your machine through `kubectl port-forward`, which works the same way on every cluster type and on both operating systems. The [`k8s/port-forward.sh`](k8s/port-forward.sh) script opens all the forwards at once.
+The services are internal to the cluster (`ClusterIP`). You reach them from your machine through `kubectl port-forward`; the [`k8s/port-forward.sh`](k8s/port-forward.sh) script opens all the forwards at once.
 
-> The old single-file `k8s-deployment.yaml` deploys only the app, with no MongoDB or Kafka, so the app cannot start correctly with it. Use the `k8s/` folder instead.
+Building and deploying is automated by [`makeit.sh`](makeit.sh) (see [section 4](#4-the-makeitsh-script)).
+
+> The old single-file `k8s-deployment.yaml` deploys only the app, with no MongoDB or Kafka, so the app cannot start correctly with it. `makeit.sh` removes it from the cluster automatically if it is still there.
 
 ---
 
-## 2. Prerequisites
+## 2. Linux
+
+Commands below are for Debian / Ubuntu. Leave about **4 GB of RAM** free for the cluster.
+
+### 2.1 Install the tools
 
 | Tool | Why | Check |
 |---|---|---|
 | **JDK 17** | Compile the app | `java -version` → `17.x` |
 | **Maven 3.9+** | Build the JAR | `mvn -v` |
-| **Docker** | Build and push the image | `docker version` |
+| **Docker Engine** | Build the image | `docker version` |
 | **kubectl** | Talk to the cluster | `kubectl version --client` |
-| **A Kubernetes cluster** | Run the stack | see step 3 |
-| **A Docker Hub account** | Host the image the cluster pulls | `docker login` |
-
-Leave about **4 GB of RAM** free for the cluster: Kafka, MongoDB and the Spring Boot app are the heavy parts.
-
-### Linux
 
 ```bash
-# Debian / Ubuntu
 sudo apt update
-sudo apt install -y openjdk-17-jdk maven
+sudo apt install -y openjdk-17-jdk maven git
 
 # Docker Engine (official script; it also creates the "docker" group)
 curl -fsSL https://get.docker.com | sudo sh
@@ -76,26 +75,11 @@ sudo update-alternatives --config java     # pick java-17
 sudo update-alternatives --config javac
 ```
 
-### macOS (Homebrew)
+### 2.2 Start a local Kubernetes cluster
 
-```bash
-brew install openjdk@17 maven kubectl
-brew install --cask docker                 # Docker Desktop; open it once after installing
+Pick **one** option.
 
-# Point the shell to JDK 17
-echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 17)' >> ~/.zshrc
-source ~/.zshrc
-```
-
----
-
-## 3. Start a local Kubernetes cluster
-
-Pick **one** option. All of them work with the rest of this guide.
-
-### Option A — k3s (Linux, recommended)
-
-A lightweight cluster that runs as a system service and does not need Docker.
+**Option A — k3s (recommended)**: a lightweight cluster that runs as a system service.
 
 ```bash
 curl -sfL https://get.k3s.io | sh -
@@ -107,7 +91,68 @@ sudo chown $USER:$USER ~/.kube/config
 chmod 600 ~/.kube/config
 ```
 
-### Option B — Docker Desktop Kubernetes (macOS, recommended)
+**Option B — minikube**
+
+```bash
+curl -LO https://storage.googleapis.com/minikube/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
+minikube start --cpus=4 --memory=6g
+```
+
+Check the cluster — you should see one node with status `Ready`:
+
+```bash
+kubectl get nodes
+```
+
+### 2.3 Build and deploy
+
+```bash
+git clone https://github.com/ademirconstantino/promoproject.git
+cd promoproject
+chmod +x makeit.sh k8s/port-forward.sh     # first time only
+
+./makeit.sh --local --forward
+```
+
+`--local` builds the image and loads it straight into the cluster, so you do not need a Docker Hub account:
+
+- **k3s**: the image is imported with `sudo k3s ctr images import`, so the script asks for your `sudo` password.
+- **minikube**: the image is loaded with `minikube image load`.
+
+`--forward` opens the UIs on localhost when the deploy finishes. Continue at [section 5](#5-open-the-uis-on-your-machine).
+
+> Prefer to publish the image to Docker Hub instead? See [Pushing to Docker Hub](#pushing-to-docker-hub).
+
+---
+
+## 3. macOS
+
+Commands below use [Homebrew](https://brew.sh). Leave about **4 GB of RAM** free for the cluster (in Docker Desktop: **Settings → Resources**).
+
+### 3.1 Install the tools
+
+| Tool | Why | Check |
+|---|---|---|
+| **JDK 17** | Compile the app | `java -version` → `17.x` |
+| **Maven 3.9+** | Build the JAR | `mvn -v` |
+| **Docker Desktop** | Build the image and run Kubernetes | `docker version` |
+| **kubectl** | Talk to the cluster | `kubectl version --client` |
+
+```bash
+brew install openjdk@17 maven kubectl git
+brew install --cask docker                 # Docker Desktop; open it once after installing
+
+# Point the shell (and Maven) to JDK 17
+echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 17)' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 3.2 Start a local Kubernetes cluster
+
+Pick **one** option.
+
+**Option A — Docker Desktop Kubernetes (recommended)**
 
 Docker Desktop → **Settings → Kubernetes → Enable Kubernetes → Apply & restart**. Then:
 
@@ -115,100 +160,103 @@ Docker Desktop → **Settings → Kubernetes → Enable Kubernetes → Apply & r
 kubectl config use-context docker-desktop
 ```
 
-### Option C — minikube (Linux or macOS)
+**Option B — minikube**
 
 ```bash
-# Linux:  curl -LO https://storage.googleapis.com/minikube/latest/minikube-linux-amd64 && sudo install minikube-linux-amd64 /usr/local/bin/minikube
-# macOS:  brew install minikube
+brew install minikube
 minikube start --cpus=4 --memory=6g
 ```
 
-### Check the cluster
+Check the cluster — you should see one node with status `Ready`:
 
 ```bash
 kubectl get nodes
 ```
 
-You should see one node with status `Ready`. If you get `connection to the server localhost:8080 was refused`, kubectl has no cluster configured — see [Troubleshooting](#9-troubleshooting).
-
----
-
-## 4. Build the application image
-
-The cluster pulls the app image from Docker Hub. In the commands below, replace `YOUR_DOCKERHUB_USER` with your Docker Hub username.
+### 3.3 Build and deploy
 
 ```bash
 git clone https://github.com/ademirconstantino/promoproject.git
 cd promoproject
+chmod +x makeit.sh k8s/port-forward.sh     # first time only
 
-# 1. Build the JAR (creates target/promoproject-1.0-SNAPSHOT.jar)
-mvn clean package -DskipTests
-
-# 2. Build the image
-docker build -t YOUR_DOCKERHUB_USER/promoproject:latest .
-
-# 3. Push it
-docker login
-docker push YOUR_DOCKERHUB_USER/promoproject:latest
+./makeit.sh --local --forward
 ```
 
-Then open [`k8s/40-app.yaml`](k8s/40-app.yaml) and set the `image:` line to your image:
+`--local` builds the image and makes it available to the cluster without Docker Hub:
 
-```yaml
-image: YOUR_DOCKERHUB_USER/promoproject:latest
-```
+- **Docker Desktop**: the cluster shares Docker's image store, so nothing extra is needed.
+- **minikube**: the image is loaded with `minikube image load`.
 
-> **Apple Silicon Mac + Linux (x86) cluster:** an image built on an M1/M2/M3 Mac is `arm64` and will not run on an `amd64` cluster. If the image has to run on both, build a multi-architecture image:
+`--forward` opens the UIs on localhost when the deploy finishes. Continue at [section 5](#5-open-the-uis-on-your-machine).
+
+> **Apple Silicon (M1/M2/M3/M4):** the image you build is `arm64`. That is fine for a cluster on the same Mac. If you push it to Docker Hub for an `amd64` (Intel / Linux) cluster, build a multi-architecture image instead of using `makeit.sh`:
 > ```bash
+> mvn clean package -DskipTests
 > docker buildx build --platform linux/amd64,linux/arm64 \
 >   -t YOUR_DOCKERHUB_USER/promoproject:latest --push .
 > ```
-> If you build and run on the same Mac (Docker Desktop or minikube), the regular `docker build` is enough.
-
-> **Just want to try it?** You can skip this step: `k8s/40-app.yaml` already points to the published image `ademirconstantino85/promoproject:latest`.
 
 ---
 
-## 5. Deploy to Kubernetes
+## 4. The `makeit.sh` script
 
-From the project root:
+[`makeit.sh`](makeit.sh) builds the app and deploys the whole stack to the cluster `kubectl` is currently pointing at. It works the same on Linux and macOS.
 
-```bash
-kubectl apply -f k8s/
-```
+What it does, in order:
 
-Watch the pods start (Ctrl+C to stop watching):
-
-```bash
-kubectl -n promoproject get pods -w
-```
-
-Wait until **every pod shows `1/1 Running`**. This takes 1–3 minutes on the first run, because the images are downloaded. It is normal for `promoproject` to restart once or twice while Kafka and MongoDB are still starting.
-
-```
-NAME                                READY   STATUS    RESTARTS
-grafana-xxxxx                       1/1     Running   0
-kafka-xxxxx                         1/1     Running   0
-kafka-exporter-xxxxx                1/1     Running   1
-kafka-ui-xxxxx                      1/1     Running   0
-mongodb-xxxxx                       1/1     Running   0
-mongodb-exporter-xxxxx              1/1     Running   0
-prometheus-xxxxx                    1/1     Running   0
-promoproject-xxxxx                  1/1     Running   1
-```
-
-To check the app is healthy:
+1. Checks that `kubectl` reaches a cluster, that Docker is running and that Maven uses JDK 17.
+2. Builds the JAR (`mvn clean package -DskipTests`).
+3. Builds the Docker image, then pushes it to Docker Hub — or, with `--local`, loads it into the cluster.
+4. Removes the legacy `k8s-deployment.yaml` resources if present, and runs `kubectl apply -f k8s/`.
+5. Restarts the app so it picks up the new image, waits for every deployment to be ready and lists the pods.
 
 ```bash
-kubectl -n promoproject logs deploy/promoproject --tail=50
+./makeit.sh [options]
 ```
+
+| Option | What it does |
+|---|---|
+| `-l`, `--local` | Load the image into the cluster (k3s, minikube or Docker Desktop) instead of pushing it to Docker Hub |
+| `-s`, `--skip-build` | Do not build the JAR or the image; only deploy |
+| `-t`, `--with-tests` | Run the tests during the Maven build |
+| `-c`, `--clean` | Delete the `promoproject` namespace before deploying (**erases MongoDB data**) |
+| `-f`, `--forward` | Run `k8s/port-forward.sh` at the end |
+| `-h`, `--help` | Show the help |
+
+| Variable | What it does |
+|---|---|
+| `IMAGE` | Image to build and deploy. Default: the `image:` in `k8s/40-app.yaml` (`ademirconstantino85/promoproject:latest`) |
+
+Examples:
+
+```bash
+./makeit.sh --local                 # build + deploy on a local cluster
+./makeit.sh --local --clean -f      # start from scratch and open the UIs
+./makeit.sh --skip-build            # re-apply the manifests only
+IMAGE=myuser/promoproject:latest ./makeit.sh    # build, push to Docker Hub and deploy
+```
+
+### Pushing to Docker Hub
+
+Without `--local`, the script pushes the image, and the cluster pulls it from Docker Hub. This is what you need for a remote cluster. Use your own Docker Hub user:
+
+```bash
+docker login
+IMAGE=YOUR_DOCKERHUB_USER/promoproject:latest ./makeit.sh
+```
+
+The script points the deployment at `IMAGE` with `kubectl set image`, so you do not have to edit `k8s/40-app.yaml`. To make it permanent, change the `image:` line in that file.
+
+> **Just want to try it?** `./makeit.sh --skip-build` deploys the already published image `ademirconstantino85/promoproject:latest` without building anything.
 
 ---
 
-## 6. Open the UIs on your machine
+## 5. Open the UIs on your machine
+
+If you did not use `--forward`, open the tunnels with:
 
 ```bash
-chmod +x k8s/port-forward.sh     # first time only
 ./k8s/port-forward.sh
 ```
 
@@ -242,19 +290,13 @@ kubectl -n promoproject port-forward svc/prometheus   9090:9090
 
 ---
 
-## 7. Day-to-day commands
+## 6. Day-to-day commands
 
-**Redeploy after changing the code**
+**Redeploy after changing the code** — just run the script again:
 
 ```bash
-mvn clean package -DskipTests
-docker build -t YOUR_DOCKERHUB_USER/promoproject:latest .
-docker push YOUR_DOCKERHUB_USER/promoproject:latest
-kubectl -n promoproject rollout restart deployment/promoproject
-kubectl -n promoproject rollout status deployment/promoproject
+./makeit.sh --local          # or without --local if you push to Docker Hub
 ```
-
-The deployment uses `imagePullPolicy: Always`, so the restart pulls the new `latest`.
 
 **Useful commands**
 
@@ -271,7 +313,7 @@ kubectl -n promoproject exec -it deploy/mongodb -- mongosh -u admin -p admin123 
 
 ---
 
-## 8. Shut down and clean up
+## 7. Shut down and clean up
 
 ```bash
 # Pause the app only (keeps everything else running)
@@ -282,42 +324,55 @@ kubectl -n promoproject scale deployment/promoproject --replicas=1    # bring it
 kubectl delete namespace promoproject
 ```
 
-If you deployed the old `k8s-deployment.yaml` before, remove it as well:
-
-```bash
-kubectl delete -f k8s-deployment.yaml --ignore-not-found
-```
-
 Stopping the cluster itself:
 
-| Cluster | Stop | Start again |
-|---|---|---|
-| k3s | `sudo systemctl stop k3s` | `sudo systemctl start k3s` |
-| Docker Desktop | quit Docker Desktop | open Docker Desktop |
-| minikube | `minikube stop` | `minikube start` |
+| OS | Cluster | Stop | Start again |
+|---|---|---|---|
+| Linux | k3s | `sudo systemctl stop k3s` | `sudo systemctl start k3s` |
+| Linux / macOS | minikube | `minikube stop` | `minikube start` |
+| macOS | Docker Desktop | quit Docker Desktop | open Docker Desktop |
 
 ---
 
-## 9. Troubleshooting
+## 8. Troubleshooting
+
+**Any OS**
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `The connection to the server localhost:8080 was refused` | kubectl has no cluster config (or you are running as `root`, which looks in `/root/.kube/config`) | Run as your normal user and redo the kubeconfig part of [step 3](#3-start-a-local-kubernetes-cluster). Check with `kubectl config get-contexts` |
-| `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock` | Your user is not in the `docker` group | `sudo groupadd docker` (if it does not exist), `sudo usermod -aG docker $USER`, then log out and back in |
-| `Unit docker.service not found` | Docker was installed via snap, or only the client is installed | Install Docker Engine with `curl -fsSL https://get.docker.com \| sudo sh` |
-| Pod in `ImagePullBackOff` | Wrong image name, or the image was not pushed | Check `image:` in `k8s/40-app.yaml` and run `docker push` again |
-| Pod in `ImagePullBackOff` with `no matching manifest for linux/amd64` | Image built on Apple Silicon, cluster is x86 | Build with `docker buildx --platform linux/amd64,linux/arm64 ... --push` |
+| `kubectl cannot reach a cluster` (from `makeit.sh`) or `connection to the server localhost:8080 was refused` | kubectl has no cluster configured, or the cluster is stopped | Start the cluster and check `kubectl config get-contexts` / `kubectl get nodes` |
+| `Maven is using Java XX` warning, or `Unsupported class file major version` | Maven is using a JDK other than 17 | `mvn -v` shows the Java in use; set `JAVA_HOME` to JDK 17 |
+| `push failed` | Not logged in to Docker Hub, or no permission on that repository | `docker login`, set `IMAGE=YOUR_DOCKERHUB_USER/promoproject:latest`, or use `--local` |
+| Pod in `ImagePullBackOff` | Wrong image name, or the image was not pushed | Run `./makeit.sh --local` on a local cluster, or check `IMAGE` and push again |
 | `promoproject` in `CrashLoopBackOff` | Kafka or MongoDB not ready yet | Wait a minute; if it continues, read `kubectl -n promoproject logs deploy/promoproject --previous` |
-| `mongodb` stuck in `Pending` | Cluster has no default StorageClass | `kubectl get storageclass` — k3s, minikube and Docker Desktop include one; other clusters may need one configured |
-| `port-forward` error `address already in use` | Something else on your machine uses that port (often `docker compose`) | Stop it (`docker compose down`) or change the left-hand port in `k8s/port-forward.sh` |
+| `makeit.sh` ends with `some deployments are not ready` | A pod did not start within 5 minutes | `kubectl -n promoproject get pods`, then `describe` / `logs` the failing one |
+| `mongodb` stuck in `Pending` | Cluster has no default StorageClass | `kubectl get storageclass` — k3s, minikube and Docker Desktop include one |
+| `port-forward` error `address already in use` | Another program uses that port (often `docker compose`) | Stop it (`docker compose down`) or change the left-hand port in `k8s/port-forward.sh` |
 | Kafka UI shows a blank page at `localhost:8084` | The UI is served under `/ui` | Open http://localhost:8084/ui/ (with the trailing `/ui/`) |
-| `Unsupported class file major version` during `mvn package` | Maven is using a JDK other than 17 | `mvn -v` shows the Java in use; set `JAVA_HOME` to JDK 17 |
+
+**Linux**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `cannot talk to Docker` / `permission denied ... docker.sock` | Your user is not in the `docker` group | `sudo usermod -aG docker $USER`, then log out and back in |
+| `Unit docker.service not found` | Docker installed via snap, or only the client is installed | Install Docker Engine with `curl -fsSL https://get.docker.com \| sudo sh` |
+| `connection refused` when running as `root` | `root` looks in `/root/.kube/config` | Run `makeit.sh` as your normal user (it calls `sudo` only where needed) |
+| `--local` on k3s asks for a password | Importing into k3s needs root | Type your `sudo` password; this is expected |
+
+**macOS**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `cannot talk to Docker` | Docker Desktop is not running | Open Docker Desktop and wait until it says *running* |
+| `kubectl get nodes` fails after enabling Kubernetes | Wrong context selected | `kubectl config use-context docker-desktop` |
+| `no matching manifest for linux/amd64` on a remote cluster | Image built on Apple Silicon | Build a multi-arch image with `docker buildx` (see [3.3](#33-build-and-deploy)) |
+| Pods `Pending` / evicted | Docker Desktop has too little memory | **Settings → Resources**: give it at least 6 GB |
 
 ---
 
-## 10. Alternative: Docker Compose (no Kubernetes)
+## 9. Alternative: Docker Compose (no Kubernetes)
 
-For a quick run without a cluster:
+For a quick run without a cluster (Linux and macOS):
 
 ```bash
 mvn clean package -DskipTests
@@ -341,7 +396,7 @@ docker compose down -v
 
 ---
 
-## Configuration reference
+## 10. Configuration reference
 
 The app reads its connection settings from environment variables. These are set for you in `k8s/40-app.yaml`:
 
